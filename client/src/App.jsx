@@ -4,23 +4,37 @@ import { useGame } from './hooks/useGame';
 import HeroSelector from './components/HeroSelector';
 import HeroCard from './components/HeroCard';
 import AIWorkout from './components/AIWorkout';
-import { Dumbbell, Activity, Trophy, Package, Store } from 'lucide-react';
+// 👇 Import thêm icon Shirt và HardHat cho phần thử đồ
+import { Dumbbell, Activity, Trophy, Package, Store, Shirt, HardHat } from 'lucide-react';
 
 function App() {
-  // 👇 QUAN TRỌNG: Đã lấy nextMintTime ra ở đây để tránh lỗi màn hình trắng
+  // Lấy dữ liệu từ Hook useGame (bao gồm cả nextMintTime)
   const { account, heroes, mintHero, workout, nextMintTime } = useGame();
   
   const [activeTab, setActiveTab] = useState('heroes');
   const [selectedHeroId, setSelectedHeroId] = useState('');
 
+  // 👇 STATE MỚI: Quản lý việc mặc thử đồ (Demo)
+  const [tempEquipment, setTempEquipment] = useState({ outfit: 'none', hat: 'none' });
+
+  // Logic chọn Hero hiện tại
   const currentHeroId = selectedHeroId || (heroes.length > 0 ? heroes[0].data.objectId : '');
   const currentHero = heroes.find(h => h.data.objectId === currentHeroId);
 
+  // Danh sách menu
   const navItems = [
     { id: 'heroes', label: 'Kho Hero', icon: Trophy },
     { id: 'inventory', label: 'Kho Đồ', icon: Package },
     { id: 'market', label: 'Giao Dịch', icon: Store },
   ];
+
+  // 👇 HÀM XỬ LÝ: Bấm nút để mặc/cởi đồ
+  const toggleEquip = (slot, itemName) => {
+    setTempEquipment(prev => ({
+      ...prev,
+      [slot]: prev[slot] === itemName ? 'none' : itemName // Nếu đang mặc rồi thì cởi ra
+    }));
+  };
 
   return (
     <div className="min-h-screen font-sans selection:bg-blue-500/30 text-white">
@@ -118,6 +132,8 @@ function App() {
           <div className="animate-fade-in">
             {activeTab === 'heroes' && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                
+                {/* --- CỘT TRÁI: HERO & TRANG BỊ --- */}
                 <div className="lg:col-span-4 space-y-6">
                   <div className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-md shadow-2xl">
                     <div className="flex items-center gap-2 mb-6 border-b border-white/5 pb-4">
@@ -125,7 +141,7 @@ function App() {
                        <h2 className="text-lg font-bold text-white uppercase tracking-wider">Fighter Selection</h2>
                     </div>
                     
-                    {/* 👇 Đã truyền nextMintTime vào đây */}
+                    {/* Component chọn Hero + Nút Mint đếm ngược */}
                     <HeroSelector 
                       heroes={heroes} 
                       selectedId={currentHeroId} 
@@ -134,16 +150,63 @@ function App() {
                       nextMintTime={nextMintTime} 
                     />
                     
+                    {/* Hiển thị thẻ Hero (Có truyền trang bị mặc thử) */}
                     <div className="mt-8">
-                      {currentHero ? <HeroCard hero={currentHero.data} /> : (
+                      {currentHero ? (
+                        <HeroCard 
+                          hero={currentHero.data} 
+                          tempEquipment={tempEquipment} // Truyền trang bị vào để hiển thị
+                        />
+                      ) : (
                          <div className="aspect-[3/4] rounded-2xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-gray-500 bg-black/20">
                            <p>Chưa chọn nhân vật</p>
                          </div>
                       )}
                     </div>
+
+                    {/* KHU VỰC THỬ ĐỒ (DEMO) */}
+{currentHero && (
+  <div className="mt-6 bg-black/40 p-4 rounded-2xl border border-white/10 backdrop-blur-md">
+    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+      <Package className="w-4 h-4" /> Thử trang bị (Demo)
+    </h3>
+    <div className="flex gap-3">
+      
+      {/* 1. Nút Áo Giáp */}
+      <button 
+        onClick={() => toggleEquip('outfit', 'warrior')} // Key 'warrior' khớp với HeroAvatar
+        className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 transition-all ${tempEquipment.outfit === 'warrior' ? 'bg-blue-600 border-blue-400 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}
+      >
+        <Shirt className="w-5 h-5" />
+        <span className="text-xs font-bold">Giáp</span>
+      </button>
+      
+      {/* 2. Nút Mũ Sắt */}
+      <button 
+        onClick={() => toggleEquip('hat', 'helmet')} // Key 'helmet' khớp với HeroAvatar
+         className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 transition-all ${tempEquipment.hat === 'helmet' ? 'bg-purple-600 border-purple-400 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}
+      >
+        <HardHat className="w-5 h-5" />
+        <span className="text-xs font-bold">Mũ</span>
+      </button>
+
+      {/* 3. Nút Kiếm Lửa */}
+      <button 
+        onClick={() => toggleEquip('weapon', 'fireSword')} // Key 'fireSword' khớp với HeroAvatar
+        className={`flex-1 p-3 rounded-xl border flex items-center justify-center gap-2 transition-all ${tempEquipment.weapon === 'fireSword' ? 'bg-red-600 border-red-400 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}
+      >
+        {/* Nếu chưa import Sword thì import thêm từ lucide-react nhé */}
+        <span className="text-lg">⚔️</span> 
+        <span className="text-xs font-bold">Kiếm</span>
+      </button>
+
+    </div>
+  </div>
+)}
                   </div>
                 </div>
 
+                {/* --- CỘT PHẢI: CAMERA TẬP LUYỆN --- */}
                 <div className="lg:col-span-8">
                   <div className="bg-white/5 border border-white/10 rounded-3xl p-1 backdrop-blur-md shadow-2xl h-full flex flex-col">
                     <div className="p-6 pb-4 flex justify-between items-end">
@@ -179,7 +242,7 @@ function App() {
               </div>
             )}
 
-            {/* CÁC TAB KHÁC */}
+            {/* --- CÁC TAB KHÁC (INVENTORY & MARKET) --- */}
             {activeTab === 'inventory' && (
               <div className="flex flex-col items-center justify-center py-20 bg-white/5 rounded-3xl border border-white/10 text-center">
                 <Package className="w-24 h-24 text-purple-500/20 mb-6" />

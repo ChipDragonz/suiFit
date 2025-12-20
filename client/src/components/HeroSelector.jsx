@@ -88,11 +88,12 @@ const HeroSelector = ({ heroes, selectedId, onSelect, onMint, nextMintTime }) =>
   ) : (
     /* 2. TRẠNG THÁI SẴN SÀNG MINT (TOXIC BUTTON) */
     <button 
-      onClick={onMint}
-      className="w-full bg-gradient-to-r from-lime-400 to-emerald-600 p-4 rounded-2xl text-slate-950 font-black text-lg uppercase tracking-tighter hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.3)]"
-    >
-      Mint New Fighter
-    </button>
+  onClick={onMint}
+  // 👇 Tui đã thêm "mb-6" vào đầu danh sách class cho ní
+  className="mb-6 w-full bg-gradient-to-r from-lime-400 to-emerald-600 p-4 rounded-2xl text-slate-950 font-black text-lg uppercase tracking-tighter hover:scale-[1.02] active:scale-95 transition-all shadow-[0_0_20px_rgba(163,230,53,0.3)]"
+>
+  Mint New Hero
+</button>
   )}
 </div>
     </div>

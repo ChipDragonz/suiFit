@@ -34,13 +34,21 @@ export const useGame = () => {
 
   const mintHero = () => {
     const txb = new Transaction();
+    
     txb.moveCall({
       target: `${PACKAGE_ID}::game::create_hero`,
-      arguments: [txb.pure.string('SuiFighter'), txb.pure.u8(0), txb.object(GAME_INFO_ID), txb.object(CLOCK_ID)],
+      arguments: [
+        txb.object(GAME_INFO_ID),      
+        txb.object(CLOCK_ID),          
+      ],
     });
+    
     signAndExecute({ transaction: txb }, {
-      onSuccess: () => { toast.success('✅ Triệu hồi thành công!'); setTimeout(() => { refetch(); checkCooldown(); }, 1000); },
-      onError: () => toast.error('❌ Lỗi giao dịch hoặc cooldown.'),
+      onSuccess: () => { 
+        toast.success('✅ A new SuiHero has been Summoned!'); 
+        setTimeout(() => { refetch(); checkCooldown(); }, 1000); 
+      },
+      onError: () => toast.error('❌ Transaction failed or Cooldown active.'),
     });
   };
 
@@ -48,13 +56,61 @@ export const useGame = () => {
     const txb = new Transaction();
     txb.moveCall({
       target: `${PACKAGE_ID}::game::workout`,
-      arguments: [txb.object(heroId), txb.object(GAME_INFO_ID), txb.object(CLOCK_ID), txb.pure.u64(multiplier)],
+      arguments: [
+        txb.object(heroId), 
+        txb.object(GAME_INFO_ID), 
+        txb.object(CLOCK_ID), 
+        txb.pure.u64(multiplier)
+      ],
     });
+    
     signAndExecute({ transaction: txb }, {
-      onSuccess: () => { toast.success(`💪 Nhận XP thành công cho ${multiplier} hiệp!`); setTimeout(refetch, 1000); onSuccess?.(); },
-      onError: (err) => toast.error(err.message.includes("2") ? "😫 Hết thể lực!" : "❌ Lỗi ví."),
+      onSuccess: () => { 
+        toast.success(`💪 Successfully earned XP for ${multiplier} sets!`); 
+        setTimeout(refetch, 1000); 
+        onSuccess?.(); 
+      },
+      onError: (err) => {
+        const isOutOfStamina = err.message.includes("2");
+        toast.error(isOutOfStamina ? "😫 Out of Stamina!" : "❌ Wallet transaction error.");
+      },
     });
   };
 
-  return { account, heroes: heroData?.data || [], mintHero, workout, nextMintTime, refetch };
+  // --- [HÀM GỌI HỢP THỂ TRÊN BLOCKCHAIN - ĐÃ FIX LỖI ĐỒNG BỘ] ---
+  const fuseHeroes = async (id1, id2, id3) => {
+    const txb = new Transaction(); // Sửa từ TransactionBlock thành Transaction
+
+    txb.moveCall({
+      target: `${PACKAGE_ID}::game::fuse_heroes`,
+      arguments: [
+        txb.object(id1),       
+        txb.object(id2),       
+        txb.object(id3),       
+        txb.object(GAME_INFO_ID), // Sửa từ GAME_INFO thành GAME_INFO_ID cho đúng hằng số
+        txb.object(CLOCK_ID),     // Dùng CLOCK_ID thay cho '0x6' cho đồng bộ
+      ],
+    });
+
+    signAndExecute({ transaction: txb }, {
+      onSuccess: () => {
+        toast.success('⚡ Evolution successful! A more powerful Hero has emerged!');
+        setTimeout(refetch, 1000); 
+      },
+      onError: (err) => {
+        const isNotFusible = err.message.includes("5"); // Mã lỗi E_NOT_FUSIBLE từ Move
+        toast.error(isNotFusible ? "❌ Heroes must be same Level and Class!" : "❌ Evolution failed.");
+      }
+    });
+  };
+
+  return { 
+    account, 
+    heroes: heroData?.data || [], 
+    mintHero, 
+    workout, 
+    fuseHeroes, // Đã thêm vào return để App.jsx dùng được
+    nextMintTime, 
+    refetch 
+  };
 };

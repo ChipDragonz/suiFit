@@ -13,13 +13,13 @@ import { ToastProvider } from './context/ToastContext';
 
 const queryClient = new QueryClient();
 const networks = {
-  devnet: { url: getFullnodeUrl('devnet') },
+  testnet: { url: getFullnodeUrl('testnet') }, // Thêm testnet vào đây
 };
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <SuiClientProvider networks={networks} defaultNetwork="devnet">
+      <SuiClientProvider networks={networks} defaultNetwork="testnet">
         <WalletProvider>
           {/* 👇 Bọc ToastProvider bao quanh App */}
           <ToastProvider> 

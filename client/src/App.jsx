@@ -1,6 +1,11 @@
-import { useDisconnectWallet } from '@mysten/dapp-kit';
-import { useState, useEffect } from 'react';
+import { 
+  useDisconnectWallet, 
+  useSuiClientQuery, // 👈 THÊM DÒNG NÀY ĐỂ FIX LỖI "ReferenceError"
+  useCurrentAccount  // (Ní thêm cái này luôn nếu lát nữa cần dùng account)
+} from '@mysten/dapp-kit';
+import { useState, useEffect, useMemo } from 'react';
 import { useGame } from './hooks/useGame';
+import { PACKAGE_ID } from './utils/constants';
 
 // --- IMPORT COMPONENTS (Đảm bảo ní đã tạo đủ 4 file này) ---
 import Background from './components/Background';
@@ -11,193 +16,354 @@ import HeroSelector from './components/HeroSelector';
 import HeroCard from './components/HeroCard';
 import AIWorkout from './components/AIWorkout';
 import FusionZone from './components/FusionZone';
+import Inventory from './components/Inventory';
 
 // --- IMPORT ICONS ---
-import { Trophy, Package, Store, Sparkles } from 'lucide-react';
+import { Trophy, Package, Store, Sparkles, Play, Activity } from 'lucide-react';
 
 function App() {
-  // --- 1. ELEMENT CONFIGURATION ---
-  const ELEMENT_MAP = {
-    0: { label: "METAL", color: "text-yellow-400", border: "border-yellow-500/50", shadow: "shadow-yellow-500/20" },
-    1: { label: "WOOD", color: "text-emerald-400", border: "border-emerald-500/50", shadow: "shadow-emerald-500/20" },
-    2: { label: "WATER", color: "text-blue-400", border: "border-blue-500/50", shadow: "shadow-blue-500/20" },
-    3: { label: "FIRE", color: "text-red-400", border: "border-red-500/50", shadow: "shadow-red-500/20" },
-    4: { label: "EARTH", color: "text-orange-700", border: "border-orange-900/50", shadow: "shadow-orange-900/20" }
-  };
+  // --- 1. ELEMENT CONFIGURATION ---
+  const ELEMENT_MAP = {
+    0: { label: "METAL", color: "text-yellow-400", border: "border-yellow-500/50", shadow: "shadow-yellow-500/20" },
+    1: { label: "WOOD", color: "text-emerald-400", border: "border-emerald-500/50", shadow: "shadow-emerald-500/20" },
+    2: { label: "WATER", color: "text-blue-400", border: "border-blue-500/50", shadow: "shadow-blue-500/20" },
+    3: { label: "FIRE", color: "text-red-400", border: "border-red-500/50", shadow: "shadow-red-500/20" },
+    4: { label: "EARTH", color: "text-orange-700", border: "border-orange-900/50", shadow: "shadow-orange-900/20" }
+  };
 
-  // --- 2. LOGIC & STATES ---
-  const { account, heroes, mintHero, workout, fuseHeroes, nextMintTime } = useGame();
-  const { mutate: disconnect } = useDisconnectWallet();
-  
-  const [activeTab, setActiveTab] = useState('heroes');
-  const [selectedHeroId, setSelectedHeroId] = useState('');
-  const [showWalletMenu, setShowWalletMenu] = useState(false);
-  const [isWorkoutStarted, setIsWorkoutStarted] = useState(false);
-  const [accumulatedSets, setAccumulatedSets] = useState(0);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [tempEquipment, setTempEquipment] = useState({ outfit: 'none', hat: 'none', weapon: 'none' });
+  // --- 2. LOGIC & STATES ---
+  const { account, heroes, mintHero, workout, fuseHeroes, nextMintTime, saveEquipment } = useGame();
+  const { mutate: disconnect } = useDisconnectWallet();
+  
+  const [activeTab, setActiveTab] = useState('heroes');
+  const [selectedHeroId, setSelectedHeroId] = useState('');
+  const [showWalletMenu, setShowWalletMenu] = useState(false);
+  const [isWorkoutStarted, setIsWorkoutStarted] = useState(false);
+  const [accumulatedSets, setAccumulatedSets] = useState(0);
+  const [inventoryItems, setInventoryItems] = useState([]); // Chứa danh sách trang bị NFT
+const [isProcessing, setIsProcessing] = useState(false); // Trạng thái chờ xử lý
+const [tempEquipment, setTempEquipment] = useState({ 
+  hat: 'none', shirt: 'none', pants: 'none', shoes: 'none', gloves: 'none', armor: 'none', weapon: 'none' 
+});
 
-  // Định nghĩa Hero hiện tại
-  const currentHeroId = selectedHeroId || (heroes[0]?.data?.objectId || '');
-  const currentHero = heroes.find(h => h.data.objectId === currentHeroId);
-  const [displayStamina, setDisplayStamina] = useState(0);
+// Hàm xử lý khi bấm nút Trang bị trong Inventory
+const handleEquip = (itemId) => {
+  console.log("Đang trang bị vật phẩm ID:", itemId);
+  // Sau này mình sẽ viết logic gọi Transaction lên Sui tại đây
+};
 
-  // --- 3. VIRTUAL STAMINA REGEN ENGINE ---
-  useEffect(() => {
-    if (!currentHero?.data) return;
+  // Định nghĩa Hero hiện tại
+  const currentHeroId = selectedHeroId || (heroes[0]?.data?.objectId || '');
+  const currentHero = heroes.find(h => h.data.objectId === currentHeroId);
+  const [displayStamina, setDisplayStamina] = useState(0);
+  const nextLevelXP = currentHero 
+  ? (Number(currentHero.data.content?.fields?.level || 0) + 1) * (Number(currentHero.data.content?.fields?.level || 0) + 1) * 50 
+  : 0;
 
-    const updateStamina = () => {
-      const now = Date.now();
-      const fields = currentHero.data.content.fields;
-      const lastUpdate = Number(fields.last_update_timestamp);
-      const staminaOnChain = Number(fields.stamina);
-      const level = Number(fields.level);
-      
-      const maxStamina = 100 + (level * 15); // Khớp với fitsui.move
-      const timePassed = now - lastUpdate;
-      const staminaRegen = Math.floor(timePassed / 60000); // 1 stamina/60s
-      
-      setDisplayStamina(Math.min(maxStamina, staminaOnChain + staminaRegen));
-    };
+  // --- 3. VIRTUAL STAMINA REGEN ENGINE ---
+  useEffect(() => {
+    if (!currentHero?.data) return;
 
-    updateStamina();
-    const interval = setInterval(updateStamina, 1000);
-    return () => clearInterval(interval);
-  }, [currentHero]);
+    const updateStamina = () => {
+      const now = Date.now();
+      const fields = currentHero.data.content.fields;
+      const lastUpdate = Number(fields.last_update_timestamp);
+      const staminaOnChain = Number(fields.stamina);
+      const level = Number(fields.level);
+      
+      const maxStamina = 100 + (level * 15); // Khớp với fitsui.move
+      const timePassed = now - lastUpdate;
+      const staminaRegen = Math.floor(timePassed / 60000); // 1 stamina/60s
+      
+      setDisplayStamina(Math.min(maxStamina, staminaOnChain + staminaRegen));
+    };
 
-  // --- 4. ACTION HANDLERS ---
-  const navItems = [
-    { id: 'heroes', label: 'Hero Vault', icon: Trophy }, 
-    { id: 'fusion', label: 'Fusion Lab', icon: Sparkles },
-    { id: 'inventory', label: 'Inventory', icon: Package }, 
-    { id: 'market', label: 'Marketplace', icon: Store }, 
-  ];
+    updateStamina();
+    const interval = setInterval(updateStamina, 1000);
+    return () => clearInterval(interval);
+  }, [currentHero]);
 
-  const handleClaim = () => {
-    if (accumulatedSets === 0) return;
-    setIsProcessing(true);
-    workout(currentHeroId, accumulatedSets, () => {
-      setAccumulatedSets(0);
-      setIsProcessing(false);
-      setIsWorkoutStarted(false);
-    });
-  };
 
-  const handleFuse = async (ids) => {
-    setIsProcessing(true);
-    try {
-      await fuseHeroes(ids[0], ids[1], ids[2]); 
-      setActiveTab('heroes');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
-  const toggleEquip = (slot, itemName) => {
-    setTempEquipment(prev => ({ ...prev, [slot]: prev[slot] === itemName ? 'none' : itemName }));
-  };
 
-  // --- 5. RENDER UI ---
-  return (
-    <div className="min-h-screen font-sans selection:bg-lime-500/30 text-white bg-[#0a0c10] relative overflow-x-hidden">
-      <Background />
-      
-      <Navbar 
-        account={account} 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        navItems={navItems}
-        showWalletMenu={showWalletMenu}
-        setShowWalletMenu={setShowWalletMenu}
-        disconnect={disconnect}
-      />
 
-      <main className="relative z-10 pt-32 pb-12 px-4 max-w-7xl mx-auto">
-        {!account ? (
-          <LandingPage />
-        ) : (
-          <div className="animate-fade-in">
-            
-            {/* TAB 1: HERO VAULT */}
-            {activeTab === 'heroes' && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <div className="lg:col-span-4 space-y-6">
-                  <div className="bg-slate-950/60 border border-lime-500/10 rounded-3xl p-6 backdrop-blur-2xl">
-                    <HeroSelector heroes={heroes} selectedId={currentHeroId} onSelect={setSelectedHeroId} onMint={mintHero} nextMintTime={nextMintTime} />
-                    
-                    {currentHero?.data ? (
-                      <HeroCard 
-                        hero={{
-                          ...currentHero.data,
-                          content: { ...currentHero.data.content, fields: { ...currentHero.data.content.fields, stamina: displayStamina }}
-                        }} 
-                        tempEquipment={tempEquipment} 
-                        elementInfo={ELEMENT_MAP[currentHero.data.content?.fields?.element] || ELEMENT_MAP[0]}
-                        nextLevelXP={(Number(currentHero.data.content?.fields?.level || 0) + 1) * (Number(currentHero.data.content?.fields?.level || 0) + 1) * 50} 
-                      />
-                    ) : (
-                      <div className="p-10 text-center border-2 border-dashed border-white/10 rounded-3xl text-gray-500 uppercase font-black text-xs tracking-widest">No Hero Selected</div>
-                    )}
+// Hàm tìm link ảnh từ tên món đồ
+const getUrlByName = (name) => {
+  if (name === 'none') return 'none';
+  return inventoryItems.find(item => item.name === name)?.url || 'none';
+};
 
-                    {currentHero && (
-                      <div className="mt-6 bg-slate-900/60 p-4 rounded-2xl border border-lime-500/10">
-                        <h3 className="text-xs font-black text-lime-500/60 uppercase mb-3 tracking-widest">Gear Preview</h3>
-                        <div className="flex gap-2">
-                          {['armor', 'helmet', 'sword'].map((item) => (
-                            <button key={item} onClick={() => toggleEquip(item === 'armor' ? 'outfit' : item === 'helmet' ? 'hat' : 'weapon', item)} className="flex-1 p-3 rounded-xl border border-white/5 bg-white/5 font-bold text-[10px] uppercase text-gray-500 hover:text-white">Preview {item}</button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+// Chuyển đổi toàn bộ Tên đồ trong tempEquipment thành URL để Avatar hiển thị được
+const previewUrls = useMemo(() => ({
+  body: currentHero?.data?.content?.fields?.url || 'none', // Thân mặc định từ NFT
+  hat: getUrlByName(tempEquipment.hat),
+  shirt: getUrlByName(tempEquipment.shirt),
+  pants: getUrlByName(tempEquipment.pants),
+  shoes: getUrlByName(tempEquipment.shoes),
+  gloves: getUrlByName(tempEquipment.gloves),
+  armor: getUrlByName(tempEquipment.armor),
+  weapon: getUrlByName(tempEquipment.weapon),
+}), [currentHero, tempEquipment, inventoryItems]);
 
-                <div className="lg:col-span-8 space-y-6">
-                  <div className="bg-slate-950/60 border border-lime-500/10 rounded-3xl p-1 backdrop-blur-2xl min-h-[480px] flex flex-col">
-                    <div className="p-6 flex justify-between items-end border-b border-white/5">
-                      <h2 className="text-3xl font-black italic uppercase tracking-tighter">Training <span className="text-lime-400">Zone</span></h2>
-                      <div className="bg-lime-500/10 border border-lime-500/20 px-4 py-1 rounded-lg text-lime-400 font-black text-xl">3 SQUATS / SET</div>
-                    </div>
-                    <div className="p-4 flex-1 flex items-center justify-center">
-                      {!isWorkoutStarted ? (
-                        <button onClick={() => setIsWorkoutStarted(true)} className="bg-gradient-to-r from-lime-400 to-emerald-600 px-12 py-6 rounded-2xl text-slate-950 font-black text-2xl shadow-2xl hover:scale-105 transition-all">START TRAINING</button>
-                      ) : (
-                        <AIWorkout onSessionUpdate={() => setAccumulatedSets(s => s + 1)} isProcessing={isProcessing} />
-                      )}
-                    </div>
-                  </div>
 
-                  {accumulatedSets > 0 && (
-                    <div className="flex flex-col items-center gap-6 py-10 bg-lime-500/5 rounded-3xl border border-lime-500/20 animate-fade-in">
-                      <button onClick={handleClaim} disabled={isProcessing} className="bg-slate-950 border border-lime-500/50 px-12 py-5 rounded-2xl text-2xl font-black text-white hover:bg-slate-800">
-                        {isProcessing ? "RECORDING..." : `CLAIM ${accumulatedSets * 10} XP`}
-                      </button>
-                      <p className="text-gray-600 text-[9px] font-black uppercase tracking-[0.4em]">On-chain Achievement Verification</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
-            {/* TAB 2: FUSION LAB */}
-            {activeTab === 'fusion' && (
-              <FusionZone heroes={heroes} onFuse={handleFuse} isProcessing={isProcessing} />
-            )}
 
-            {/* TABS: INVENTORY & MARKETPLACE */}
-            {(activeTab === 'inventory' || activeTab === 'market') && (
-              <div className="flex flex-col items-center justify-center py-24 bg-slate-950/60 rounded-3xl border border-white/5 text-center">
-                <h2 className="text-3xl font-black uppercase mb-2 italic">{activeTab} Vault</h2>
-                <p className="text-lime-500/60 font-bold uppercase tracking-widest text-sm">🚧 Feature Under Construction</p>
-              </div>
-            )}
 
-          </div>
-        )}
-        <Footer />
-      </main>
-    </div>
-  );
+  // --- 4. ACTION HANDLERS ---
+  const navItems = [
+    { id: 'heroes', label: 'Hero Vault', icon: Trophy }, 
+    { id: 'fusion', label: 'Fusion Lab', icon: Sparkles },
+    { id: 'inventory', label: 'Inventory', icon: Package }, 
+    { id: 'market', label: 'Marketplace', icon: Store }, 
+  ];
+
+  const handleClaim = () => {
+    if (accumulatedSets === 0) return;
+    setIsProcessing(true);
+    workout(currentHeroId, accumulatedSets, () => {
+      setAccumulatedSets(0);
+      setIsProcessing(false);
+      setIsWorkoutStarted(false);
+    });
+  };
+
+  const handleFuse = async (ids) => {
+    setIsProcessing(true);
+    try {
+      await fuseHeroes(ids[0], ids[1], ids[2]); 
+      setActiveTab('heroes');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+
+
+// --- Inside App.jsx Logic & States section ---
+
+// 1. Fetch Item Objects (Gear/NFTs) from Sui
+const { data: itemData } = useSuiClientQuery('getOwnedObjects', {
+  owner: account?.address,
+  filter: { 
+    // Replace with your actual Item Struct type from fitsui.move
+    StructType: `${PACKAGE_ID}::game::Item` 
+  },
+  options: { showContent: true },
+}, { enabled: !!account });
+
+// 2. Sync fetched data to inventoryItems state
+useEffect(() => {
+  if (itemData?.data) {
+    const formattedItems = itemData.data.map(obj => ({
+      objectId: obj.data.objectId,
+      name: obj.data.content.fields.name,
+      rarity: Number(obj.data.content.fields.rarity),
+      part: Number(obj.data.content.fields.part), // 👈 SỬA: 'part_type' thành 'part' cho khớp với Move
+      url: obj.data.content.fields.url
+    }));
+    setInventoryItems(formattedItems);
+  }
+}, [itemData]);
+
+
+
+    // --- Inside App.jsx Action Handlers ---
+const handleSaveEquipment = async (finalPreview) => {
+  if (!currentHeroId || isProcessing) return;
+
+  setIsProcessing(true); // Start loading pulse
+  
+  try {
+    // Mapping preview names back to their unique Sui Object IDs
+    const itemObjectIdsToEquip = Object.values(finalPreview)
+      .filter(itemName => itemName !== 'none')
+      .map(itemName => {
+        const foundItem = inventoryItems.find(item => item.name === itemName);
+        return foundItem ? foundItem.objectId : null;
+      })
+      .filter(id => id !== null);
+
+    console.log("Submitting Gear Update to Sui Network...");
+
+    // Calls the Move function via signAndExecute
+    await saveEquipment(currentHeroId, itemObjectIdsToEquip); 
+    
+    // Give Sui indexer a moment to catch up before stopping the spinner
+    setTimeout(() => setIsProcessing(false), 2000);
+
+  } catch (error) {
+    setIsProcessing(false);
+    console.error("Blockchain Interaction Error:", error);
+  }
+};
+
+
+  const toggleEquip = (slot, itemName) => {
+    setTempEquipment(prev => ({ ...prev, [slot]: prev[slot] === itemName ? 'none' : itemName }));
+  };
+
+  // --- 5. RENDER UI ---
+  return (
+    <div className="min-h-screen font-sans selection:bg-lime-500/30 text-white bg-[#0a0c10] relative overflow-x-hidden">
+      <Background />
+      
+      <Navbar 
+        account={account} 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        navItems={navItems}
+        showWalletMenu={showWalletMenu}
+        setShowWalletMenu={setShowWalletMenu}
+        disconnect={disconnect}
+      />
+
+      <main className="relative z-10 pt-32 pb-32 md:pb-12 px-4 max-w-7xl mx-auto">
+        {!account ? (
+          <LandingPage />
+        ) : (
+          <div className="animate-fade-in">
+            
+            {/* TAB 1: HERO VAULT */}
+            {activeTab === 'heroes' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <div className="lg:col-span-4 space-y-6">
+                  <div className="bg-slate-950/60 border border-lime-500/10 rounded-3xl p-6 backdrop-blur-2xl">
+                    <HeroSelector heroes={heroes} selectedId={currentHeroId} onSelect={setSelectedHeroId} onMint={mintHero} nextMintTime={nextMintTime} />
+                    
+                    {currentHero?.data ? (
+                      <HeroCard 
+                        hero={currentHero.data} 
+                        tempEquipment={previewUrls} 
+                        elementInfo={ELEMENT_MAP[currentHero.data.content?.fields?.element] || ELEMENT_MAP[0]}
+                        nextLevelXP={nextLevelXP} 
+                      />
+                    ) : (
+                      <div className="p-10 text-center border-2 border-dashed border-white/10 rounded-3xl text-gray-500 uppercase font-black text-xs tracking-widest">No Hero Selected</div>
+                    )}
+
+                    
+                  </div>
+                </div>
+
+                {/* --- PHẦN TRAINING ZONE CHUẨN THEO CODE CỦA NÍ --- */}
+<div className="lg:col-span-8 space-y-6">
+  <div className="bg-slate-950/60 border border-lime-500/10 rounded-3xl p-1 backdrop-blur-2xl flex flex-col relative min-h-[480px]">
+    <div className="p-6 flex justify-between items-end border-b border-white/5">
+      <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Training <span className="text-lime-400">Zone</span></h2>
+      <div className="bg-lime-500/10 border border-lime-500/20 px-4 py-1 rounded-lg">
+        <p className="text-xl font-black text-lime-400 uppercase">3 SQUATS / SET</p>
+      </div>
+    </div>
+    
+    <div className="p-4 flex-1 flex items-center justify-center">
+      {!isWorkoutStarted ? (
+        <div className="text-center space-y-6">
+          {/* Vòng tròn icon Play ní muốn giữ đây */}
+          <div className="w-24 h-24 bg-lime-500/10 rounded-full flex items-center justify-center mx-auto border-2 border-dashed border-lime-500/30">
+            <Play className="w-10 h-10 text-lime-400 fill-lime-400" />
+          </div>
+          <button 
+            onClick={() => setIsWorkoutStarted(true)} 
+            className="bg-gradient-to-r from-lime-400 to-emerald-600 px-10 py-5 rounded-2xl text-slate-950 font-black text-xl shadow-[0_0_30px_rgba(163,230,53,0.3)] hover:scale-105 transition-all uppercase"
+          >
+            START TRAINING
+          </button>
+        </div>
+      ) : (
+        <AIWorkout onSessionUpdate={() => setAccumulatedSets(s => s + 1)} isProcessing={isProcessing} />
+      )}
+    </div>
+  </div>
+
+  {/* PHẦN REWARD CLAIM (ĐÚNG PHONG CÁCH NEON CỦA NÍ) */}
+  {accumulatedSets > 0 && (
+    <div className="flex flex-col items-center gap-6 py-10 bg-lime-500/5 rounded-3xl border border-lime-500/20 shadow-2xl animate-fade-in">
+      <div className="flex items-center gap-3">
+        <Activity className="text-lime-400 w-5 h-5 animate-bounce" />
+        <span className="font-black text-lime-400 uppercase tracking-[0.2em] text-xs text-center">
+          Session complete: {accumulatedSets} Sets Finished! 🔥
+        </span>
+      </div>
+
+      <button onClick={handleClaim} disabled={isProcessing} className="relative group scale-110 active:scale-95 transition-all">
+        <div className="absolute -inset-1 bg-gradient-to-r from-lime-400 to-emerald-600 rounded-2xl blur opacity-70 group-hover:opacity-100 transition duration-500"></div>
+        <div className="relative bg-slate-950 border border-white/20 px-12 py-5 rounded-2xl flex items-center gap-4 hover:bg-slate-800 transition-all">
+          <span className="text-2xl font-black text-white uppercase tracking-tighter">
+            {isProcessing ? "Confirming..." : `FINISH & CLAIM ${accumulatedSets * 10} XP`}
+          </span>
+          <Trophy className="text-lime-400 w-6 h-6" />
+        </div>
+      </button>
+
+      <p className="text-gray-600 text-[9px] font-black uppercase tracking-[0.4em] mt-2">
+        Permanently record results on Sui Blockchain
+      </p>
+    </div>
+  )}
+</div>
+              </div>
+            )}
+
+            {/* TAB 2: FUSION LAB */}
+            {activeTab === 'fusion' && (
+              <FusionZone heroes={heroes} onFuse={handleFuse} isProcessing={isProcessing} />
+            )}
+
+            {/* TAB 3: INVENTORY VAULT */}
+{activeTab === 'inventory' && (
+              <Inventory 
+                items={inventoryItems} 
+                heroes={heroes}
+                currentHero={currentHero}
+                onSelectHero={setSelectedHeroId}
+                tempEquipment={tempEquipment} 
+                previewUrls={previewUrls}
+                onToggleEquip={toggleEquip}
+                onSave={handleSaveEquipment} 
+                isProcessing={isProcessing}
+                elementMap={ELEMENT_MAP}
+                nextLevelXP={nextLevelXP}
+              />
+)}
+
+            {/* TABS: INVENTORY & MARKETPLACE */}
+            {(activeTab === 'market') && (
+              <div className="flex flex-col items-center justify-center py-24 bg-slate-950/60 rounded-3xl border border-white/5 text-center">
+                <h2 className="text-3xl font-black uppercase mb-2 italic">{activeTab} Vault</h2>
+                <p className="text-lime-500/60 font-bold uppercase tracking-widest text-sm">🚧 Feature Under Construction</p>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        <Footer />
+
+        {/* 👇 DÁN ĐOẠN NÀY VÀO ĐÂY (TRƯỚC THẺ </div> CUỐI CÙNG) */}
+        {account && (
+          <div className="md:hidden fixed bottom-0 left-0 right-0 z-[100] bg-slate-950/80 backdrop-blur-2xl border-t border-white/10 px-6 py-4 pb-10 flex justify-between items-center animate-fade-in-up">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex flex-col items-center gap-1 transition-all ${activeTab === item.id ? 'text-lime-400 scale-110' : 'text-gray-500'}`}
+              >
+                <div className={`p-2 rounded-xl ${activeTab === item.id ? 'bg-lime-500/20 ring-1 ring-lime-500/50' : ''}`}>
+                  <item.icon className="w-6 h-6" />
+                </div>
+                <span className="text-[10px] font-black uppercase tracking-tighter">{item.label.split(' ')[0]}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        
+      </main>
+
+      
+    </div>
+
+    
+  );
 }
 
 export default App;

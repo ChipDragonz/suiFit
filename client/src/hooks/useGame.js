@@ -77,9 +77,8 @@ export const useGame = () => {
     });
   };
 
-  // --- [HÀM GỌI HỢP THỂ TRÊN BLOCKCHAIN - ĐÃ FIX LỖI ĐỒNG BỘ] ---
   const fuseHeroes = async (id1, id2, id3) => {
-    const txb = new Transaction(); // Sửa từ TransactionBlock thành Transaction
+    const txb = new Transaction(); 
 
     txb.moveCall({
       target: `${PACKAGE_ID}::game::fuse_heroes`,
@@ -87,8 +86,8 @@ export const useGame = () => {
         txb.object(id1),       
         txb.object(id2),       
         txb.object(id3),       
-        txb.object(GAME_INFO_ID), // Sửa từ GAME_INFO thành GAME_INFO_ID cho đúng hằng số
-        txb.object(CLOCK_ID),     // Dùng CLOCK_ID thay cho '0x6' cho đồng bộ
+        txb.object(GAME_INFO_ID), 
+        txb.object(CLOCK_ID),     
       ],
     });
 
@@ -98,8 +97,35 @@ export const useGame = () => {
         setTimeout(refetch, 1000); 
       },
       onError: (err) => {
-        const isNotFusible = err.message.includes("5"); // Mã lỗi E_NOT_FUSIBLE từ Move
+        const isNotFusible = err.message.includes("5"); 
         toast.error(isNotFusible ? "❌ Heroes must be same Level and Class!" : "❌ Evolution failed.");
+      }
+    });
+  };
+
+  // --- NEW LOGIC: BLOCKCHAIN EQUIPMENT SYSTEM ---
+  const saveEquipment = (heroId, itemObjectIds) => {
+    const txb = new Transaction();
+
+    txb.moveCall({
+      target: `${PACKAGE_ID}::game::equip_items`, // Move function to handle equipment
+      arguments: [
+        txb.object(heroId),
+        // Passing a vector of item objects to the Move function
+        txb.makeMoveVec({
+          objects: itemObjectIds.map(id => txb.object(id))
+        })
+      ],
+    });
+
+    signAndExecute({ transaction: txb }, {
+      onSuccess: () => {
+        toast.success('⚔️ Equipment successfully updated on Sui!');
+        setTimeout(refetch, 1000); // Refresh hero data to show new gear
+      },
+      onError: (err) => {
+        console.error("Equipment Save Error:", err);
+        toast.error('❌ Failed to update equipment on blockchain.');
       }
     });
   };
@@ -109,7 +135,8 @@ export const useGame = () => {
     heroes: heroData?.data || [], 
     mintHero, 
     workout, 
-    fuseHeroes, // Đã thêm vào return để App.jsx dùng được
+    fuseHeroes, 
+    saveEquipment, // 👈 Added to the return object for App.jsx
     nextMintTime, 
     refetch 
   };

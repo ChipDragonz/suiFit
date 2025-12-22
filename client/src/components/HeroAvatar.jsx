@@ -36,7 +36,7 @@ const HeroAvatar = ({ equipment }) => {
   };
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+    <div className="relative w-full h-full flex items-center justify-center">
       
       {/* Hiệu ứng hào quang Neon rực rỡ phía sau Hero */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[85%] h-[85%] bg-lime-500/5 blur-[120px] rounded-full animate-pulse" />

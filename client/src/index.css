@@ -36,7 +36,7 @@
   height: 2px;
   background: linear-gradient(-45deg, #A3E635, rgba(163, 230, 53, 0));
   border-radius: 999px;
-  filter: drop-shadow(0 0 6px #A3E635);
+  filter: drop-shadow(0 0 12px #A3E635) drop-shadow(0 0 20px #A3E635);
   transform: rotate(45deg); 
   animation: tail 3000ms ease-in-out infinite, shooting 3000ms ease-in-out infinite;
 }
@@ -88,3 +88,4 @@
   50% { width: 30px; }
   100% { width: 0; }
 }
+

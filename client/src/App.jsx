@@ -1,11 +1,13 @@
 import { 
   useDisconnectWallet, 
-  useSuiClientQuery, // 👈 THÊM DÒNG NÀY ĐỂ FIX LỖI "ReferenceError"
-  useCurrentAccount  // (Ní thêm cái này luôn nếu lát nữa cần dùng account)
+  useSuiClientQuery, 
+  useCurrentAccount,
+  useSignAndExecuteTransaction // 👈 THÊM DÒNG NÀY
 } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
 import { useState, useEffect, useMemo } from 'react';
 import { useGame } from './hooks/useGame';
-import { PACKAGE_ID } from './utils/constants';
+import { PACKAGE_ID, GAME_INFO_ID, CLOCK_ID } from './utils/constants';
 
 // --- IMPORT COMPONENTS (Đảm bảo ní đã tạo đủ 4 file này) ---
 import Background from './components/Background';
@@ -17,9 +19,10 @@ import HeroCard from './components/HeroCard';
 import AIWorkout from './components/AIWorkout';
 import FusionZone from './components/FusionZone';
 import Inventory from './components/Inventory';
+import HuntingGrounds from './components/HuntingGrounds';
 
 // --- IMPORT ICONS ---
-import { Trophy, Package, Store, Sparkles, Play, Activity } from 'lucide-react';
+import { Trophy, Package, Store, Sparkles, Play, Activity, Skull } from 'lucide-react';
 
 function App() {
   // --- 1. ELEMENT CONFIGURATION ---
@@ -34,7 +37,10 @@ function App() {
   // --- 2. LOGIC & STATES ---
   const { account, heroes, mintHero, workout, fuseHeroes, nextMintTime, saveEquipment } = useGame();
   const { mutate: disconnect } = useDisconnectWallet();
-  
+const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
+const [pendingMonsterHP, setPendingMonsterHP] = useState(0);
+
+
   const [activeTab, setActiveTab] = useState('heroes');
   const [selectedHeroId, setSelectedHeroId] = useState('');
   const [showWalletMenu, setShowWalletMenu] = useState(false);
@@ -61,29 +67,82 @@ const handleEquip = (itemId) => {
   : 0;
 
   // --- 3. VIRTUAL STAMINA REGEN ENGINE ---
-  useEffect(() => {
-    if (!currentHero?.data) return;
+ // --- TRONG App.jsx ---
+const [staminaProgress, setStaminaProgress] = useState(0); // 👈 THÊM STATE NÀY
 
-    const updateStamina = () => {
-      const now = Date.now();
-      const fields = currentHero.data.content.fields;
-      const lastUpdate = Number(fields.last_update_timestamp);
-      const staminaOnChain = Number(fields.stamina);
-      const level = Number(fields.level);
-      
-      const maxStamina = 100 + (level * 15); // Khớp với fitsui.move
-      const timePassed = now - lastUpdate;
-      const staminaRegen = Math.floor(timePassed / 60000); // 1 stamina/60s
-      
-      setDisplayStamina(Math.min(maxStamina, staminaOnChain + staminaRegen));
-    };
+// --- TRONG App.jsx ---
+useEffect(() => {
+  const fields = currentHero?.data?.content?.fields;
+  if (!fields) return;
 
-    updateStamina();
-    const interval = setInterval(updateStamina, 1000);
-    return () => clearInterval(interval);
-  }, [currentHero]);
+  const updateStamina = () => {
+    const now = Date.now();
+    const lastUpdate = Number(fields.last_update_timestamp || 0);
+    const staminaOnChain = Number(fields.stamina || 0);
+    const level = Number(fields.level || 0);
+    const maxStamina = 100 + (level * 15); //
+
+    const timePassed = Math.max(0, now - lastUpdate);
+    const staminaRegen = Math.floor(timePassed / 60000); //
+    const totalStamina = Math.min(maxStamina, staminaOnChain + staminaRegen);
+    
+    // ✅ Cập nhật State để UI thay đổi, nhưng KHÔNG LOG ra console nữa
+    setDisplayStamina(totalStamina);
+
+    const progress = totalStamina >= maxStamina ? 100 : ((timePassed % 60000) / 60000) * 100;
+    setStaminaProgress(progress);
+    
+  };
+
+  updateStamina();
+  // Giữ interval 1s để thanh Progress Bar nhích mượt mà
+  const interval = setInterval(updateStamina, 1000); 
+  return () => clearInterval(interval);
+}, [currentHero?.data?.objectId, currentHero?.data?.content?.fields?.stamina]);
 
 
+
+// 2. Hàm Claim gom tất cả kết quả vào 1 Transaction
+  const handleClaimFarmRewards = async () => {
+  if (pendingMonsterHP < 10 || !currentHero || isProcessing) {
+    if (pendingMonsterHP < 10) alert("Ní ơi, tích ít nhất 10 HP mới đủ 1 lần Claim!");
+    return;
+  }
+
+  // ✅ ĐỔI THÀNH CHIA 10: 10 HP = 1 Multiplier = 10 Stamina = 10 XP
+  const totalMultiplier = Math.floor(pendingMonsterHP / 10);
+
+  const requiredStamina = totalMultiplier * 10;
+  if (displayStamina < requiredStamina) {
+    alert(`Ní hết hơi rồi! Cần ${requiredStamina} Stamina nhưng chỉ có ${displayStamina}.`);
+    return;
+  }
+
+    try {
+    setIsProcessing(true);
+    const txb = new Transaction();
+    txb.moveCall({
+      target: `${PACKAGE_ID}::game::workout`,
+      arguments: [
+        txb.object(currentHero.data.objectId),
+        txb.object(GAME_INFO_ID),
+        txb.object(CLOCK_ID),
+        txb.pure.u64(totalMultiplier),
+      ],
+    });
+
+      signAndExecuteTransaction({ transaction: txb }, {
+      onSuccess: () => {
+        setPendingMonsterHP(0);
+        console.log("Claim thành công!");
+        setTimeout(() => window.location.reload(), 1000);
+      },
+      onError: (err) => console.error("Lỗi:", err)
+    });
+  } finally {
+    setIsProcessing(false);
+  }
+};
 
 
 
@@ -115,6 +174,7 @@ const previewUrls = useMemo(() => ({
     { id: 'fusion', label: 'Fusion Lab', icon: Sparkles },
     { id: 'inventory', label: 'Inventory', icon: Package }, 
     { id: 'market', label: 'Marketplace', icon: Store }, 
+    { id: 'farm', label: 'Farm Zone', icon: Skull },
   ];
 
   const handleClaim = () => {
@@ -137,7 +197,9 @@ const previewUrls = useMemo(() => ({
     }
   };
 
-
+const handleSlayMonster = (monsterMaxHP) => {
+    setPendingMonsterHP(prev => prev + monsterMaxHP);
+  };
 
 // --- Inside App.jsx Logic & States section ---
 
@@ -204,7 +266,7 @@ const handleSaveEquipment = async (finalPreview) => {
 
   // --- 5. RENDER UI ---
   return (
-    <div className="min-h-screen font-sans selection:bg-lime-500/30 text-white bg-[#0a0c10] relative overflow-x-hidden">
+    <div className="min-h-screen font-sans selection:bg-lime-500/30 text-white relative overflow-x-hidden">
       <Background />
       
       <Navbar 
@@ -233,6 +295,8 @@ const handleSaveEquipment = async (finalPreview) => {
                     {currentHero?.data ? (
                       <HeroCard 
                         hero={currentHero.data} 
+                        stamina={displayStamina}
+                        staminaProgress={staminaProgress}
                         tempEquipment={previewUrls} 
                         elementInfo={ELEMENT_MAP[currentHero.data.content?.fields?.element] || ELEMENT_MAP[0]}
                         nextLevelXP={nextLevelXP} 
@@ -263,14 +327,21 @@ const handleSaveEquipment = async (finalPreview) => {
             <Play className="w-10 h-10 text-lime-400 fill-lime-400" />
           </div>
           <button 
-            onClick={() => setIsWorkoutStarted(true)} 
-            className="bg-gradient-to-r from-lime-400 to-emerald-600 px-10 py-5 rounded-2xl text-slate-950 font-black text-xl shadow-[0_0_30px_rgba(163,230,53,0.3)] hover:scale-105 transition-all uppercase"
-          >
-            START TRAINING
-          </button>
+      disabled={displayStamina < 10 || isProcessing} // ✅ Chỉ cần 10 Stamina là cho START
+      onClick={() => setIsWorkoutStarted(true)} 
+  className="bg-gradient-to-r from-lime-400 to-emerald-600 px-10 py-5 rounded-2xl text-slate-950 font-black text-xl shadow-[0_0_30px_rgba(163,230,53,0.3)] hover:scale-105 transition-all uppercase disabled:opacity-50 disabled:grayscale disabled:cursor-not-allowed"
+>
+  {displayStamina < 10 ? "NOT ENOUGH STAMINA (NEED 10)" : "START TRAINING"}
+    </button>
         </div>
       ) : (
-        <AIWorkout onSessionUpdate={() => setAccumulatedSets(s => s + 1)} isProcessing={isProcessing} />
+        <AIWorkout 
+    onSessionUpdate={() => setAccumulatedSets(s => s + 1)} 
+    onAutoStop={() => setIsWorkoutStarted(false)} // 👈 THÊM DÒNG NÀY: Hàm để tắt Camera
+    isProcessing={isProcessing} 
+    stamina={displayStamina} // 👈 Truyền stamina hiện tại xuống
+    accumulatedSets={accumulatedSets} // 👈 Truyền số Set đã tập xong xuống
+  />
       )}
     </div>
   </div>
@@ -326,6 +397,21 @@ const handleSaveEquipment = async (finalPreview) => {
               />
 )}
 
+
+{activeTab === 'farm' && (
+      <HuntingGrounds 
+        hero={currentHero?.data} 
+        previewUrls={previewUrls} 
+        onSlay={handleSlayMonster} 
+        pendingMonsterHP={pendingMonsterHP} // 👈 TRUYỀN XUỐNG
+        onClaim={handleClaimFarmRewards}   // 👈 TRUYỀN XUỐNG
+        isProcessing={isProcessing}
+        stamina={displayStamina}
+  />
+)}
+
+
+
             {/* TABS: INVENTORY & MARKETPLACE */}
             {(activeTab === 'market') && (
               <div className="flex flex-col items-center justify-center py-24 bg-slate-950/60 rounded-3xl border border-white/5 text-center">
@@ -337,7 +423,10 @@ const handleSaveEquipment = async (finalPreview) => {
           </div>
         )}
 
-        <Footer />
+        
+        
+      </main>
+      <Footer />
 
         {/* 👇 DÁN ĐOẠN NÀY VÀO ĐÂY (TRƯỚC THẺ </div> CUỐI CÙNG) */}
         {account && (
@@ -356,9 +445,6 @@ const handleSaveEquipment = async (finalPreview) => {
             ))}
           </div>
         )}
-        
-      </main>
-
       
     </div>
 

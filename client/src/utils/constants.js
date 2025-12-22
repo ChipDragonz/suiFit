@@ -1,7 +1,7 @@
 // client/src/utils/constants.js
 
 export const NETWORK = 'devnet';
-export const PACKAGE_ID = "0x5e22b605f649675be7ab01e166f037dcfa520917bdb8cc666d403c36ed3998b3";
-export const GAME_INFO_ID = "0x29d0ef145c48b9a6d6cb1d23c34075b009e8193bcf92ff444025cc83f1bbfc3c";
+export const PACKAGE_ID = "0xe7fd024777d5e1f814809f4c4961a793c0855bc17b9d241f4f8165287b7caae7";
+export const GAME_INFO_ID = "0xba7cb3af97d5b48e7bcc1e3b239f4f995a45a86b3cd6b05067e40bf471023ecb";
 export const CLOCK_ID = "0x6";
 export const STAMINA_COST = 10;

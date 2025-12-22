@@ -17,7 +17,7 @@ module fitsui::game {
     const STAMINA_REGEN_MS: u64 = 60000; 
     const BASE_MAX_STAMINA: u64 = 100;
 
-    // --- CHỈ SỐ SỨC MẠNH CỐ ĐỊNH (FIXED STATS) ---
+    // --- CHỈ SỐ SỨC MẠNH CỐ ĐỊNH ---
     const BONUS_COMMON: u64 = 2;    
     const BONUS_RARE: u64 = 3;      
     const BONUS_EPIC: u64 = 5;      
@@ -34,7 +34,7 @@ module fitsui::game {
         cooldown_ms: u64,
         minters: Table<address, u64>, 
         hero_count: u64, 
-        item_count: u64, // 👈 THAY ĐỔI 1: Thêm bộ đếm trang bị
+        item_count: u64, 
     }
 
     public struct Hero has key, store {
@@ -80,7 +80,7 @@ module fitsui::game {
             cooldown_ms: 5000, 
             minters: table::new(ctx),
             hero_count: 0, 
-            item_count: 0, // 👈 THAY ĐỔI 2: Khởi tạo bộ đếm bằng 0
+            item_count: 0, 
         });
     }
 
@@ -132,10 +132,14 @@ module fitsui::game {
         };
         table::add(&mut game_info.minters, sender, current_time);
 
+        // 👇 LOGIC ĐẶT TÊN TỰ ĐỘNG THEO SỐ THỨ TỰ
         game_info.hero_count = game_info.hero_count + 1;
+        let mut hero_name = string::utf8(b"Hero #");
+        string::append(&mut hero_name, u64_to_string(game_info.hero_count));
+
         let hero = Hero {
             id: object::new(ctx),
-            name: string::utf8(b"SuiHero"),
+            name: hero_name,
             level: 0,
             xp: 0,
             url: game_info.default_url,
@@ -145,10 +149,18 @@ module fitsui::game {
             last_update_timestamp: current_time,
             number: game_info.hero_count,
         };
+
+        event::emit(HeroCreated { 
+            id: object::uid_to_inner(&hero.id), 
+            owner: sender, 
+            name: hero.name, 
+            element: hero.element, 
+            number: hero.number 
+        });
+
         transfer::transfer(hero, sender);
     }
 
-    // 👇 THAY ĐỔI 3: game_info chuyển thành &mut để tăng bộ đếm
     public entry fun workout(hero: &mut Hero, game_info: &mut GameInfo, clock: &Clock, multiplier: u64, ctx: &mut TxContext) {
         let current_time = clock::timestamp_ms(clock);
         let time_passed = current_time - hero.last_update_timestamp;
@@ -167,14 +179,13 @@ module fitsui::game {
         hero.xp = hero.xp + xp_gain;
         hero.last_update_timestamp = current_time;
 
+        // Logic rơi đồ (Tạm thời để true để ní test)
         let uid_temp = object::new(ctx);
-        
         if (true) { 
             let rarity = 3; 
             let bonus = BONUS_LEGENDARY;
             let part = 6; 
 
-            // 👇 THAY ĐỔI 4: Tự động tạo tên theo số thứ tự (Sword #1, Sword #2...)
             game_info.item_count = game_info.item_count + 1;
             let mut item_name = string::utf8(b"Sword #");
             string::append(&mut item_name, u64_to_string(game_info.item_count));
@@ -188,7 +199,12 @@ module fitsui::game {
                 url: string::utf8(b"https://beige-urgent-clam-163.mypinata.cloud/ipfs/bafkreiclj5dhzcotxdt7qzxkfkyjyamt6hlis2yh5ibrxxu6uajwuexqh4"),
             };
             
-            event::emit(ItemDropped { hero_id: object::uid_to_inner(&hero.id), item_id: object::uid_to_inner(&item.id), owner: ctx.sender(), rarity: item.rarity });
+            event::emit(ItemDropped { 
+                hero_id: object::uid_to_inner(&hero.id), 
+                item_id: object::uid_to_inner(&item.id), 
+                owner: ctx.sender(), 
+                rarity: item.rarity 
+            });
             transfer::public_transfer(item, ctx.sender());
         } else {
             object::delete(uid_temp);
@@ -210,10 +226,16 @@ module fitsui::game {
 
     public entry fun fuse_heroes(h1: Hero, h2: Hero, h3: Hero, game_info: &mut GameInfo, clock: &Clock, ctx: &mut TxContext) {
         assert!(h1.element == h2.element && h1.level == h2.level && h2.level == h3.level, E_NOT_FUSIBLE);
+        
+        // Cập nhật tên mới cho Hero hợp thể
+        game_info.hero_count = game_info.hero_count + 1;
+        let mut fused_name = string::utf8(b"Hero #");
+        string::append(&mut fused_name, u64_to_string(game_info.hero_count));
+
         let fused_level = h1.level + 2;
         let fused_hero = Hero {
             id: object::new(ctx),
-            name: string::utf8(b"Fused Hero"),
+            name: fused_name,
             level: fused_level,
             xp: 0,
             url: h1.url,
@@ -221,11 +243,19 @@ module fitsui::game {
             strength: fused_level + 1, 
             element: h1.element,
             last_update_timestamp: clock::timestamp_ms(clock),
-            number: game_info.hero_count + 1,
+            number: game_info.hero_count,
         };
-        game_info.hero_count = game_info.hero_count + 1;
-        let Hero { id: id1, .. } = h1; let Hero { id: id2, .. } = h2; let Hero { id: id3, .. } = h3;
+
+        let Hero { id: id1, .. } = h1; 
+        let Hero { id: id2, .. } = h2; 
+        let Hero { id: id3, .. } = h3;
         object::delete(id1); object::delete(id2); object::delete(id3);
+        
+        event::emit(HeroFused { 
+            id: object::uid_to_inner(&fused_hero.id), 
+            owner: ctx.sender(), 
+            new_level: fused_level 
+        });
         transfer::transfer(fused_hero, ctx.sender());
     }
 
@@ -247,6 +277,12 @@ module fitsui::game {
             hero.strength = hero.strength + 1;
             hero.stamina = get_max_stamina(hero.level);
             threshold = get_next_level_threshold(hero.level, game_info.level_threshold);
+            
+            event::emit(HeroLeveledUp { 
+                id: object::uid_to_inner(&hero.id), 
+                owner: _ctx.sender(), 
+                new_level: hero.level 
+            });
         }
     }
 }

@@ -9,6 +9,7 @@ module fitsui::game {
     const E_NO_STAMINA: u64 = 2;
     const E_MINT_COOLDOWN: u64 = 4;
     const E_NOT_FUSIBLE: u64 = 5; 
+    #[allow(unused_const)]
     const E_SLOT_OCCUPIED: u64 = 6; 
 
     // --- CẤU HÌNH HỆ THỐNG ---
@@ -273,11 +274,18 @@ module fitsui::game {
         check_level_up(hero, game_info, ctx);
     }
 
-    public entry fun equip_item(hero: &mut Hero, item: Item, _ctx: &mut TxContext) {
-        let part_label = u64_to_string(item.part as u64);
-        assert!(!ofield::exists_(&hero.id, part_label), E_SLOT_OCCUPIED); 
-        ofield::add(&mut hero.id, part_label, item); 
-    }
+    public entry fun equip_item(hero: &mut Hero, item: Item, ctx: &mut TxContext) { // ✅ Thêm ctx để gửi trả đồ cũ
+    let part_label = u64_to_string(item.part as u64);
+    
+    // ✅ LOGIC THÔNG MINH: Nếu vị trí này đã có đồ, hãy tháo ra trước
+    if (ofield::exists_(&hero.id, part_label)) {
+        let old_item: Item = ofield::remove(&mut hero.id, part_label);
+        transfer::public_transfer(old_item, ctx.sender()); // Trả món cũ về ví người chơi
+    };
+
+    // Mặc món mới vào
+    ofield::add(&mut hero.id, part_label, item); 
+}
 
     public entry fun unequip_item(hero: &mut Hero, part: u8, ctx: &mut TxContext) {
         let item: Item = ofield::remove(&mut hero.id, u64_to_string(part as u64)); 
@@ -323,13 +331,15 @@ module fitsui::game {
         transfer::transfer(fused_hero, ctx.sender());
     }
 
-    public entry fun equip_multiple_items(hero: &mut Hero, mut items: vector<Item>, _ctx: &mut TxContext) {
-        while (vector::length(&items) > 0) {
-            let item = vector::remove(&mut items, 0);
-            equip_item(hero, item, _ctx); 
-        };
-        vector::destroy_empty(items);
-    }
+// 2. Cập nhật hàm mặc nhiều trang bị cùng lúc
+public entry fun equip_multiple_items(hero: &mut Hero, mut items: vector<Item>, ctx: &mut TxContext) { // ✅ Thêm ctx
+    while (vector::length(&items) > 0) {
+        let item = vector::remove(&mut items, 0);
+        // Gọi hàm equip_item đã sửa ở trên để xử lý đổi đồ tự động
+        equip_item(hero, item, ctx); 
+    };
+    vector::destroy_empty(items);
+}
 
     fun check_level_up(hero: &mut Hero, game_info: &GameInfo, _ctx: &TxContext) {
         let mut threshold = get_next_level_threshold(hero.level, game_info.level_threshold);

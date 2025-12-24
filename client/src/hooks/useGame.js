@@ -52,31 +52,21 @@ export const useGame = () => {
     });
   };
 
-  const workout = (heroId, multiplier, onSuccess) => {
-    const txb = new Transaction();
-    txb.moveCall({
-      target: `${PACKAGE_ID}::game::workout`,
-      arguments: [
-        txb.object(heroId), 
-        txb.object(GAME_INFO_ID), 
-        txb.object(CLOCK_ID), 
-        txb.pure.u64(multiplier)
-      ],
-    });
-    
-    signAndExecute({ transaction: txb }, {
-      onSuccess: () => { 
-        toast.success(`💪 Successfully earned XP for ${multiplier} sets!`); 
-        setTimeout(refetch, 1000); 
-        onSuccess?.(); 
-      },
-      onError: (err) => {
-        const isOutOfStamina = err.message.includes("2");
-        toast.error(isOutOfStamina ? "😫 Out of Stamina!" : "❌ Wallet transaction error.");
-      },
-    });
-  };
-
+ const workout = (heroId, multiplier, callback) => {
+  const txb = new Transaction();
+  txb.moveCall({
+    target: `${PACKAGE_ID}::game::workout`,
+    arguments: [txb.object(heroId), txb.object(GAME_INFO_ID), txb.object(CLOCK_ID), txb.pure.u64(multiplier)],
+  });
+  
+  signAndExecute({ transaction: txb }, {
+    onSuccess: (response) => { 
+      // Truyền response ngược lại cho App.jsx để check ItemDropped
+      callback?.(response); 
+      setTimeout(refetch, 1000); 
+    }
+  });
+};
   const fuseHeroes = async (id1, id2, id3) => {
     const txb = new Transaction(); 
 
@@ -103,32 +93,32 @@ export const useGame = () => {
     });
   };
 
-  // --- NEW LOGIC: BLOCKCHAIN EQUIPMENT SYSTEM ---
-  const saveEquipment = (heroId, itemObjectIds) => {
-    const txb = new Transaction();
+ // --- TRONG hooks/useGame.js ---
+const saveEquipment = (heroId, itemObjectIds) => {
+  const txb = new Transaction();
+  // ✅ Bảo vệ mảng để không bị lỗi .map
+  const ids = itemObjectIds || []; 
 
-    txb.moveCall({
-      target: `${PACKAGE_ID}::game::equip_items`, // Move function to handle equipment
-      arguments: [
-        txb.object(heroId),
-        // Passing a vector of item objects to the Move function
-        txb.makeMoveVec({
-          objects: itemObjectIds.map(id => txb.object(id))
-        })
-      ],
-    });
+  txb.moveCall({
+  target: `${PACKAGE_ID}::game::equip_multiple_items`,
+  arguments: [
+    txb.object(heroId),
+    txb.makeMoveVec({ elements: ids.map(id => txb.object(id)) })
+    // ✅ ctx KHÔNG CẦN TRUYỀN Ở ĐÂY, SDK TỰ LO!
+  ],
+});
 
-    signAndExecute({ transaction: txb }, {
-      onSuccess: () => {
-        toast.success('⚔️ Equipment successfully updated on Sui!');
-        setTimeout(refetch, 1000); // Refresh hero data to show new gear
-      },
-      onError: (err) => {
-        console.error("Equipment Save Error:", err);
-        toast.error('❌ Failed to update equipment on blockchain.');
-      }
-    });
-  };
+  signAndExecute({ transaction: txb }, {
+    onSuccess: () => {
+      toast.success('⚔️ Equipment updated on Sui!');
+      setTimeout(refetch, 1000); 
+    },
+    onError: (err) => {
+      console.error("Save Error:", err);
+      toast.error('❌ Failed to update equipment.');
+    }
+  });
+};
 
   return { 
     account, 

@@ -1,5 +1,4 @@
 import React from 'react';
-// ✅ ĐÃ THÊM: Zap vào danh sách import
 import { Box, Zap, CheckCircle2, XCircle, Save, RotateCcw } from 'lucide-react';
 import HeroCard from './HeroCard';
 import HeroSelector from './HeroSelector';
@@ -15,7 +14,9 @@ const Inventory = ({
   onSave, 
   isProcessing, 
   elementMap,
-  nextLevelXP 
+  nextLevelXP,
+  totalStrength,
+  onChainItemsMetadata
 }) => {
   const PART_NAMES = ["Hat", "Shirt", "Pants", "Shoes", "Gloves", "Armor", "Sword"];
   const SLOTS = ["hat", "shirt", "pants", "shoes", "gloves", "armor", "weapon"]; 
@@ -28,7 +29,16 @@ const Inventory = ({
   ];
 
   const getOwnedItems = (rarityId, partId) => items.filter(i => i.rarity === rarityId && i.part === partId);
-  const hasChanges = Object.values(tempEquipment).some(val => val !== 'none');
+
+  // ✅ 1. LOGIC NHẬN DIỆN THAY ĐỔI (TRANG BỊ MỚI HOẶC THÁO ĐỒ)
+  const hasChanges = Object.keys(tempEquipment).some(slot => {
+    const previewItemName = tempEquipment[slot]; 
+    const onChainItemName = onChainItemsMetadata[slot]?.name || 'none';
+    return previewItemName !== onChainItemName;
+  });
+
+  // ✅ 2. BIẾN NHÃN NÚT BẤM (Dùng để hiển thị đồng nhất)
+  const buttonLabel = hasChanges ? "SAVE EQUIPMENT" : "NO CHANGES DETECTED";
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-fade-in pb-32">
@@ -50,14 +60,19 @@ const Inventory = ({
               <HeroCard 
                 hero={currentHero.data} 
                 tempEquipment={previewUrls} 
+                onChainItemsMetadata={onChainItemsMetadata}
+                inventoryItems={items}
                 elementInfo={elementMap[currentHero.data.content?.fields?.element] || elementMap[0]}
                 nextLevelXP={nextLevelXP}
+                totalStrength={totalStrength}
                 hideStats={true} 
+                isInventoryMode={true} 
+                onSlotClick={(slotId) => onToggleEquip(slotId, tempEquipment[slotId])} 
               />
 
               <div className="space-y-4 pt-6 border-t border-white/5">
                 <button
-                  disabled={isProcessing}
+                  disabled={!hasChanges || isProcessing}
                   onClick={() => onSave(tempEquipment)}
                   className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 flex items-center justify-center gap-3 ${
                     hasChanges 
@@ -68,11 +83,12 @@ const Inventory = ({
                   {isProcessing ? (
                     <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <><Save size={16} /> {hasChanges ? "SAVE EQUIPMENT" : "NO CHANGES DETECTED"}</>
+                    // ✅ Dùng biến buttonLabel ở đây cho đồng bộ
+                    <><Save size={16} /> {buttonLabel}</>
                   )}
                 </button>
                 <p className="text-[9px] text-center text-gray-600 font-bold uppercase tracking-[0.3em]">
-                  {hasChanges ? "CONFIRM TO UPDATE ON BLOCKCHAIN" : "SELECT GEAR ON THE RIGHT TO START"}
+                  {hasChanges ? "CONFIRM TO UPDATE ON BLOCKCHAIN" : "SELECT GEAR ON THE RIGHT OR CLICK SLOT TO REMOVE"}
                 </p>
               </div>
             </div>
@@ -106,24 +122,16 @@ const Inventory = ({
                   <div key={partId} className={`relative aspect-square rounded-2xl border-2 transition-all flex flex-col items-center justify-center group ${hasItem ? `${rarity.border} bg-slate-900/60 shadow-xl` : 'border-white/5 bg-black/40 opacity-40'}`}>
                     {hasItem ? (
                       <>
-                        {/* Số lượng vật phẩm xN */}
                         {ownedItems.length > 1 && (
                           <div className="absolute top-2 right-2 z-20 bg-slate-950/80 border border-white/20 px-2 py-0.5 rounded-lg backdrop-blur-md shadow-lg pointer-events-none">
                             <span className="text-[10px] font-black text-white">x{ownedItems.length}</span>
                           </div>
                         )}
-                        
                         <img src={ownedItems[0].url} className="w-full h-full object-cover rounded-xl p-2" alt={name} />
-
-                        {/* ✅ BADGE CỘNG STR (Góc dưới bên phải) */}
                         <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-slate-950/90 backdrop-blur-md border border-white/10 flex items-center gap-1 shadow-lg pointer-events-none z-10">
                           <Zap size={8} className="text-yellow-400 fill-yellow-400" />
-                          <span className="text-[9px] font-black text-white italic tracking-tighter">
-                            +{ownedItems[0].bonus} STR
-                          </span>
+                          <span className="text-[9px] font-black text-white italic tracking-tighter">+{ownedItems[0].bonus} STR</span>
                         </div>
-
-                        {/* HOVER ACTIONS */}
                         <div className="absolute inset-0 bg-slate-950/90 opacity-0 group-hover:opacity-100 transition-all flex flex-col items-center justify-center gap-2 p-1 rounded-xl z-20">
                           <button 
                             onClick={() => onToggleEquip(slotKey, ownedItems[0].name)}

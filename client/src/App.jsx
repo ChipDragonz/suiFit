@@ -40,7 +40,15 @@ function App() {
   };
 
   // --- 2. LOGIC & STATES ---
-  const { account, heroes, mintHero, workout, fuseHeroes, nextMintTime, saveEquipment, refetchHeroes } = useGame();
+const { 
+  account, 
+  heroes, 
+  mintHero, 
+  workout, 
+  fuseHeroes, 
+  nextMintTime, 
+  refetchHeroes // ✅ Lấy từ hook ra
+} = useGame(); 
   const { mutate: disconnect } = useDisconnectWallet();
   const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
   const [onChainItemsMetadata, setOnChainItemsMetadata] = useState({});
@@ -96,7 +104,7 @@ const getHeroTotalStrength = (hero) => {
 
 
 
-// 3. CẬP NHẬT LOGIC ĐỒNG BỘ (Quét và lưu cả Tên, URL, Bonus)
+// ✅ 1. CẬP NHẬT HÀM ĐỒNG BỘ: Quét kỹ Rarity và Bonus từ Blockchain
 useEffect(() => {
   const syncGearOnReload = async () => {
     if (!currentHeroId || !client) return;
@@ -107,24 +115,34 @@ useEffect(() => {
       const SLOTS = ["hat", "shirt", "pants", "shoes", "gloves", "armor", "weapon"];
 
       const promises = dynamicFields.data.map(async (field) => {
-        const partId = parseInt(field.name.value);
-        if (partId >= 0 && partId < 7) {
-          const itemObj = await client.getObject({ id: field.objectId, options: { showContent: true } });
-          const f = itemObj.data?.content?.fields;
-          if (f) {
-            onChainGearNames[SLOTS[partId]] = f.name;
-            onChainMeta[SLOTS[partId]] = { name: f.name, url: f.url, bonus: Number(f.bonus || 0) };
-          }
-        }
-      });
+  const partId = parseInt(field.name.value);
+  if (partId >= 0 && partId < 7) {
+    const itemObj = await client.getObject({ id: field.objectId, options: { showContent: true } });
+    const f = itemObj.data?.content?.fields;
+    if (f) {
+      onChainGearNames[SLOTS[partId]] = f.name;
+      // ✅ PHẢI LƯU RARITY VÀO ĐÂY
+      onChainMeta[SLOTS[partId]] = { 
+        name: f.name, 
+        url: f.url, 
+        rarity: Number(f.rarity || 0), // <--- DÒNG NÀY CỰC QUAN TRỌNG
+        bonus: Number(f.bonus || 0) 
+      };
+    }
+  }
+});
 
       await Promise.all(promises);
-      setTempEquipment(onChainGearNames);
-      setOnChainItemsMetadata(onChainMeta); // Lưu Metadata để previewUrls sử dụng
+      setOnChainItemsMetadata(onChainMeta);
+      
+      // Chỉ cập nhật tempEquipment khi dApp không bận load giao dịch thành công
+      if (!isProcessing) {
+        setTempEquipment(onChainGearNames);
+      }
     } catch (e) { console.error("Sync Error:", e); }
   };
   syncGearOnReload();
-}, [currentHeroId, client, account]);
+}, [currentHeroId, client, account, heroes]);
 
 
 // ✅ EFFECT 2: NHỊP ĐẬP HỒI STAMINA (Hồi máu theo thời gian thực)
@@ -259,9 +277,7 @@ const handleClaim = () => {
   setIsProcessing(true);
 
   workout(currentHeroId, accumulatedSets, (response) => {
-    setAccumulatedSets(0);
-    setIsWorkoutStarted(false);
-    
+    // Không reset ngay lập tức, đợi dữ liệu blockchain về
     setTimeout(async () => {
       try {
         const txData = await client.getTransactionBlock({
@@ -274,17 +290,27 @@ const handleClaim = () => {
           const { rarity, name, url } = dropEvent.parsedJson;
           toast.showLoot(Number(rarity), name, url);
         } else {
+          // Tính XP ảo để hiện thông báo cho vui, XP thật đã tăng trên xích
           const xp = (getHeroTotalStrength(currentHero) * 10) * accumulatedSets;
-          toast.success(`Training Complete! Gained ${xp} XP.`); // English Toast
+          toast.success(`Training Complete! Gained ${xp} XP.`); 
         }
+        
+        // ✅ CẬP NHẬT LẠI TOÀN BỘ DỮ LIỆU
+        await refetchItems(); 
+        await refetchHeroes(); 
+        
+        setAccumulatedSets(0);
+        setIsWorkoutStarted(false);
       } catch (e) {
-        console.error("Event Retrieval Error:", e);
+        console.error("Sync Error:", e);
       } finally {
         setIsProcessing(false);
       }
-    }, 1200);
+    }, 2000); // Đợi Indexer blockchain cập nhật hoàn toàn
   });
 };
+
+
 
   const handleFuse = async (ids) => {
     setIsProcessing(true);
@@ -327,80 +353,60 @@ useEffect(() => {
 
 
 
-    // --- Inside App.jsx Action Handlers ---
 const handleSaveEquipment = async (finalPreview) => {
   if (!currentHeroId || isProcessing) return;
 
-  setIsProcessing(true);
-  console.log("Starting Gear Update Procedure...");
-
+  setIsProcessing(true); // Bắt đầu xoay vòng
   try {
     const txb = new Transaction();
     const SLOTS = ["hat", "shirt", "pants", "shoes", "gloves", "armor", "weapon"];
 
-    // 1. DETECTION: Identify items to Unequip
-    // If an item is on-chain but 'none' in preview, call unequip_item
+    // Phân loại tháo/mặc
     SLOTS.forEach((slotName, index) => {
       if (onChainItemsMetadata[slotName] && finalPreview[slotName] === 'none') {
-        console.log(`Command: Unequipping ${slotName} (Part ID: ${index})`);
-        txb.moveCall({
-          target: `${PACKAGE_ID}::game::unequip_item`,
-          arguments: [
-            txb.object(currentHeroId),
-            txb.pure.u8(index), // Move uses u8 for part index
-          ],
-        });
+        txb.moveCall({ target: `${PACKAGE_ID}::game::unequip_item`, arguments: [txb.object(currentHeroId), txb.pure.u8(index)] });
       }
     });
 
-    // 2. DETECTION: Identify new items to Equip
-    // Only equip items that are in preview but not currently on the hero
     const itemObjectIdsToEquip = Object.entries(finalPreview)
-      .filter(([slot, name]) => {
-        return name !== 'none' && onChainItemsMetadata[slot]?.name !== name;
-      })
-      .map(([slot, name]) => {
-        const foundItem = inventoryItems.find(item => item.name === name);
-        return foundItem ? foundItem.objectId : null;
-      })
-      .filter(id => id !== null);
+      .filter(([slot, name]) => name !== 'none' && onChainItemsMetadata[slot]?.name !== name)
+      .map(([slot, name]) => inventoryItems.find(item => item.name === name)?.objectId)
+      .filter(id => !!id);
 
     if (itemObjectIdsToEquip.length > 0) {
-      console.log("Command: Equipping new items:", itemObjectIdsToEquip);
       txb.moveCall({
         target: `${PACKAGE_ID}::game::equip_multiple_items`,
-        arguments: [
-          txb.object(currentHeroId),
-          txb.makeMoveVec({ elements: itemObjectIdsToEquip.map(id => txb.object(id)) }),
-        ],
+        arguments: [txb.object(currentHeroId), txb.makeMoveVec({ elements: itemObjectIdsToEquip.map(id => txb.object(id)) })],
       });
     }
 
-    // 3. EXECUTION: Execute the bundled transaction
-    signAndExecuteTransaction({ 
-      transaction: txb 
-    }, {
+    signAndExecuteTransaction({ transaction: txb }, {
       onSuccess: () => {
-        toast.success("Gear Updated Successfully!"); // English Toast
-        // Synchronize data after Indexer delay
-        setTimeout(() => {
-          if (refetchItems) refetchItems();
-          if (refetchHeroes) refetchHeroes();
-          setIsProcessing(false);
-        }, 2000);
+        toast.success("Syncing with Blockchain...");
+        // ✅ CHỜ INDEXER (4 giây) - Đảm bảo đồ đã vào Hero
+        setTimeout(async () => {
+          try {
+            await refetchItems(); 
+            // ✅ SỬA LỖI: Dùng đúng tên hàm refetch từ hook
+            if (refetchHeroes) await refetchHeroes(); 
+          } catch (err) { console.error(err); }
+          finally {
+            setIsProcessing(false); // ✅ GIẢI PHÓNG NÚT BẤM
+          }
+        }, 4000); 
       },
       onError: (err) => {
-        console.error("Blockchain Update Failed:", err);
-        toast.error("Transaction Failed! Please try again."); // English Toast
-        setIsProcessing(false);
+        console.error("TX Error:", err);
+        toast.error("Save Failed!");
+        setIsProcessing(false); // Giải phóng nút nếu lỗi
       }
     });
-
-  } catch (error) {
-    setIsProcessing(false);
-    console.error("Interaction Error:", error);
-  }
+  } catch (error) { setIsProcessing(false); }
 };
+
+
+
+
 
   const toggleEquip = (slot, itemName) => {
     setTempEquipment(prev => ({ ...prev, [slot]: prev[slot] === itemName ? 'none' : itemName }));
@@ -451,6 +457,7 @@ const handleSaveEquipment = async (finalPreview) => {
         staminaProgress={staminaProgress}
         tempEquipment={previewUrls} 
         onChainItemsMetadata={onChainItemsMetadata}
+        inventoryItems={inventoryItems}
         elementInfo={ELEMENT_MAP[currentHero.data.content?.fields?.element] || ELEMENT_MAP[0]}
         nextLevelXP={nextLevelXP} 
       />

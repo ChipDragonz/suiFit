@@ -26,11 +26,16 @@ export const useGame = () => {
 
   useEffect(() => { checkCooldown(); }, [account]);
 
-  const { data: heroData, refetch } = useSuiClientQuery('getOwnedObjects', {
-    owner: account?.address,
-    filter: { StructType: `${PACKAGE_ID}::game::Hero` },
-    options: { showContent: true },
-  }, { enabled: !!account, refetchInterval: 5000 });
+  // 1. Query lấy danh sách Hero
+  const { data: heroesData, refetch: refetchHeroes } = useSuiClientQuery(
+    'getOwnedObjects',
+    {
+      owner: account?.address,
+      filter: { StructType: `${PACKAGE_ID}::game::Hero` },
+      options: { showContent: true },
+    },
+    { enabled: !!account }
+  );
 
   const mintHero = () => {
     const txb = new Transaction();
@@ -44,11 +49,16 @@ export const useGame = () => {
     });
     
     signAndExecute({ transaction: txb }, {
-      onSuccess: () => { 
-        toast.success('✅ A new SuiHero has been Summoned!'); 
-        setTimeout(() => { refetch(); checkCooldown(); }, 1000); 
+      onSuccess: (response) => { 
+        // ✅ TRUYỀN CALLBACK ĐỂ APP.JSX HIỆN LOOT
+        callback?.(response); 
+        // ✅ SỬA LỖI: Gọi đúng refetchHeroes thay vì refetch
+        setTimeout(() => refetchHeroes(), 1500); 
       },
-      onError: () => toast.error('❌ Transaction failed or Cooldown active.'),
+      onError: (err) => {
+        console.error("Workout Error:", err);
+        toast.error("Training failed on Blockchain");
+      }
     });
   };
 
@@ -93,41 +103,15 @@ export const useGame = () => {
     });
   };
 
- // --- TRONG hooks/useGame.js ---
-const saveEquipment = (heroId, itemObjectIds) => {
-  const txb = new Transaction();
-  // ✅ Bảo vệ mảng để không bị lỗi .map
-  const ids = itemObjectIds || []; 
 
-  txb.moveCall({
-  target: `${PACKAGE_ID}::game::equip_multiple_items`,
-  arguments: [
-    txb.object(heroId),
-    txb.makeMoveVec({ elements: ids.map(id => txb.object(id)) })
-    // ✅ ctx KHÔNG CẦN TRUYỀN Ở ĐÂY, SDK TỰ LO!
-  ],
-});
-
-  signAndExecute({ transaction: txb }, {
-    onSuccess: () => {
-      toast.success('⚔️ Equipment updated on Sui!');
-      setTimeout(refetch, 1000); 
-    },
-    onError: (err) => {
-      console.error("Save Error:", err);
-      toast.error('❌ Failed to update equipment.');
-    }
-  });
-};
 
   return { 
     account, 
-    heroes: heroData?.data || [], 
+    heroes: heroesData?.data || [], 
     mintHero, 
     workout, 
     fuseHeroes, 
-    saveEquipment, // 👈 Added to the return object for App.jsx
     nextMintTime, 
-    refetch 
+    refetchHeroes,
   };
 };

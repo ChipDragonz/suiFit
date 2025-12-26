@@ -36,13 +36,13 @@ const Footer = () => {
         <div className="space-y-6">
           <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Resources</h4>
           <div className="flex justify-center gap-6">
-            <a href="#" className="p-3 bg-white/5 rounded-2xl hover:text-lime-400 hover:bg-white/10 transition-all group" title="Documentation">
+            <a href="https://github.com/ChipDragonz/FitSUI.Pro/blob/main/README.md" className="p-3 bg-white/5 rounded-2xl hover:text-lime-400 hover:bg-white/10 transition-all group" title="Documentation">
               <BookOpen size={22} className="group-hover:scale-110 transition-transform" />
             </a>
-            <a href="https://github.com/ChipDragonz" target="_blank" rel="noopener noreferrer" className="p-3 bg-white/5 rounded-2xl hover:text-lime-400 hover:bg-white/10 transition-all group" title="Github">
+            <a href="https://github.com/ChipDragonz/FitSUI.Pro" target="_blank" rel="noopener noreferrer" className="p-3 bg-white/5 rounded-2xl hover:text-lime-400 hover:bg-white/10 transition-all group" title="Github">
               <Github size={22} className="group-hover:scale-110 transition-transform" />
             </a>
-            <a href="#" className="p-3 bg-white/5 rounded-2xl hover:text-lime-400 hover:bg-white/10 transition-all group" title="Whitepaper">
+            <a href="https://www.canva.com/design/DAG8ktyL6dI/y-Zyqo1C85AEzsXN0OcHaA/edit?utm_content=DAG8ktyL6dI&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton" className="p-3 bg-white/5 rounded-2xl hover:text-lime-400 hover:bg-white/10 transition-all group" title="Whitepaper">
               <FileText size={22} className="group-hover:scale-110 transition-transform" />
             </a>
           </div>

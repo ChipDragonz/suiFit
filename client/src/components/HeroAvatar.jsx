@@ -24,7 +24,7 @@ const AvatarLayer = ({ src, zIndex, layerName, delay = 0, isAnimated = false }) 
   return (
     <motion.img
       src={src}
-      key={src}
+      // key={src}
       initial={startPos}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.8 }}
@@ -32,7 +32,7 @@ const AvatarLayer = ({ src, zIndex, layerName, delay = 0, isAnimated = false }) 
         type: isAnimated ? "spring" : "tween",
         stiffness: 80,
         damping: 15,
-        duration: isAnimated ? 1.2 : 0.1, // Hiện siêu nhanh nếu không animated
+        duration: layerName === 'body' ? 0.1 : (isAnimated ? 1.2 : 0.1),
         delay: isAnimated ? delay : 0 
       }}
       className="absolute inset-0 w-full h-full pointer-events-none"

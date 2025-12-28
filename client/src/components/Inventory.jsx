@@ -19,6 +19,15 @@ const Inventory = ({
 }) => {
   const PART_NAMES = ["Shield", "Cloak", "Pants", "Shirt", "Gloves", "Necklace", "Sword"];
   const SLOTS = ["shield", "cloak", "pants", "shirt", "gloves", "necklace", "sword"];
+  // Hàm đếm số loại trang bị duy nhất (0-7)
+const getUniquePartsCount = (rarityId) => {
+  return new Set(items.filter(i => i.rarity === rarityId).map(item => item.part)).size;
+};
+
+// Hàm đếm tổng số lượng tất cả vật phẩm (bao gồm cả đồ trùng)
+const getTotalItemsByRarity = (rarityId) => {
+  return items.filter(i => i.rarity === rarityId).length;
+};
 
   // ✅ 1. CẤU HÌNH PHÁT SÁNG CHO KHO ĐỒ (Aura & Glow)
   const RARITY_CONFIG = [
@@ -121,8 +130,12 @@ const Inventory = ({
           <div key={rarity.id} className="space-y-4">
             <div className="flex items-center gap-4 px-2">
               <span className={`text-[10px] font-black tracking-[0.3em] uppercase ${rarity.color}`}>
-                {rarity.label} ({items.filter(i => i.rarity === rarity.id).length}/7)
-              </span>
+    {rarity.label} ({getUniquePartsCount(rarity.id)}/7)
+  </span>
+  
+  <span className="text-[9px] font-bold text-gray-500 bg-white/5 px-3 py-1 rounded-full border border-white/5">
+    TOTAL OWNED: {getTotalItemsByRarity(rarity.id)}
+  </span>
               <div className="h-[1px] flex-1 bg-white/5"></div>
             </div>
 
